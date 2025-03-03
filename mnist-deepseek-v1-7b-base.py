@@ -1,3 +1,4 @@
+# https://huggingface.co/deepseek-ai/deepseek-vl-7b-base
 # https://x.com/i/grok?conversation=1896539730960880091
 import os
 import torch
