@@ -35,7 +35,7 @@ model_path = "deepseek-ai/deepseek-vl-7b-base"
 vl_chat_processor: VLChatProcessor = VLChatProcessor.from_pretrained(model_path)
 tokenizer = vl_chat_processor.tokenizer
 vl_gpt: MultiModalityCausalLM = AutoModelForCausalLM.from_pretrained(model_path, trust_remote_code=True)
-vl"),g_gpt = vl_gpt.to(torch.bfloat16).cuda().eval()
+vl_gpt = vl_gpt.to(torch.bfloat16).cuda().eval()
 
 def setup_argparse():
     parser = argparse.ArgumentParser(description='MNIST/CIFAR-10 Classification with DeepSeek VL')
@@ -45,7 +45,6 @@ def setup_argparse():
     return parser.parse_args()
 
 def load_datasets(use_cifar10=False):
-    """Load either MNIST or CIFAR-10 datasets based on flag."""
     if use_cifar10:
         dataset_path = CIFAR10_PATH
         raw_path = RAW_PATH_CIFAR10
@@ -71,7 +70,6 @@ def load_datasets(use_cifar10=False):
     return train_dataset, test_dataset, class_dict, idx_to_class, results_path
 
 def extract_class(response, class_dict, debug=False):
-    """Extract class from model response based on dataset."""
     try:
         response = response.strip().lower()
         if debug:
@@ -93,7 +91,19 @@ def process_image(image, processor, model, class_dict, debug=False):
     """Process a single image by saving to disk temporarily."""
     if not isinstance(image, Image.Image):
         image = Image.fromarray(image)
-    image.save(TMP_IMAGE_PATH)
+    
+    mode = 'RGB' if 'airplane' in class_dict else 'L'
+    image = image.convert(mode)
+    
+    try:
+        image.save(TMP_IMAGE_PATH, format='PNG')
+        if debug:
+            print(f"Saved image to {TMP_IMAGE_PATH}")
+        if not os.path.exists(TMP_IMAGE_PATH):
+            raise FileNotFoundError(f"Failed to save image to {TMP_IMAGE_PATH}")
+    except Exception as e:
+        print(f"Error saving image: {str(e)}")
+        return 10
     
     class_options = ", ".join(class_dict.keys())
     conversation = [
@@ -105,20 +115,31 @@ def process_image(image, processor, model, class_dict, debug=False):
         {"role": "Assistant", "content": ""}
     ]
     
-    pil_images = load_pil_images(conversation)
+    try:
+        pil_images = load_pil_images(conversation)
+        if debug:
+            print(f"Successfully loaded image from {TMP_IMAGE_PATH}")
+    except Exception as e:
+        print(f"Error loading image with load_pil_images: {str(e)}")
+        if os.path.exists(TMP_IMAGE_PATH):
+            os.remove(TMP_IMAGE_PATH)
+        return 10
+    
     prepare_inputs = processor(conversations=conversation, images=pil_images, force_batchify=True).to(model.device)
     inputs_embeds = model.prepare_inputs_embeds(**prepare_inputs)
     
     outputs = model.language_model.generate(
         inputs_embeds=inputs_embeds, attention_mask=prepare_inputs.attention_mask,
         pad_token_id=tokenizer.eos_token_id, bos_token_id=tokenizer.bos_token_id, eos_token_id=tokenizer.eos_token_id,
-        max_new_tokens=20, do_sample=False, use_cache=True  # Increased for CIFAR-10 longer names
+        max_new_tokens=20, do_sample=False, use_cache=True
     )
     
     response = tokenizer.decode(outputs[0].cpu().tolist(), skip_special_tokens=True)
     
     if os.path.exists(TMP_IMAGE_PATH):
         os.remove(TMP_IMAGE_PATH)
+        if debug:
+            print(f"Deleted temporary file {TMP_IMAGE_PATH}")
     
     return extract_class(response, class_dict, debug=debug)
 
@@ -154,7 +175,6 @@ def main():
     args = setup_argparse()
     train_dataset, test_dataset, class_dict, idx_to_class, results_path = load_datasets(args.cifar10)
     
-    # Process test set only for simplicity
     dataset = test_dataset
     set_type = 'testing'
     
@@ -180,8 +200,8 @@ def main():
             print(f"Image {idx}")
             print(f"True label: {label} ({idx_to_class[label]})")
             print(f"Predicted class: {predicted_class} ({idx_to_class.get(predicted_class, 'unknown')})")
-            print(f"{'='*50}\n")
-            input("Press Enter to continue...")
+            print(f"{'='*50}")
+            # Removed input() for batch compatibility
         
         results['true_labels'].append(label)
         results['predicted_labels'].append(predicted_class)

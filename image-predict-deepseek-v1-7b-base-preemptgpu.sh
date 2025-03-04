@@ -24,7 +24,7 @@
 #===============================================================================
 
 #SBATCH -D /users/aczd097/git/DeepSeek-VL    # Working directory
-#SBATCH --job-name DS7BCGPU # Job name 8 characters or less Deepseek 7B on CIFAR10
+#SBATCH --job-name DS7BCGP2 # Job name 8 characters or less Deepseek 7B on CIFAR10
 #SBATCH --mail-type=ALL                 # Mail events (NONE, BEGIN, END, FAIL, ALL)
 #SBATCH --mail-user=daniel.sikar@city.ac.uk     # Where to send mail
 
